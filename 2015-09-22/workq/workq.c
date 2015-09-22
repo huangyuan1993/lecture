@@ -150,10 +150,15 @@ void workq_wait(workq_t* workq)
  */
 void workq_put(workq_t* workq, void* data)
 {
+	pthread_mutex_lock(&(workq->lock));
+    
+	
     task_t* task = (task_t*) malloc(sizeof(task_t));
     task->data = data;
     task->next = workq->tasks;
     workq->tasks = task;
+	pthread_mutex_unlock(&(workq->lock));
+	workq_signal(workq);
 }
 
 
@@ -165,12 +170,29 @@ void workq_put(workq_t* workq, void* data)
 void* workq_get(workq_t* workq)
 {
     void* result = NULL;
+	
+	pthread_mutex_lock(&(workq->lock));
     if (workq->tasks) {
+		
         task_t* task = workq->tasks;
         result = task->data;
         workq->tasks = task->next;
         free(task);
     }
+	else{
+		workq_wait(workq);
+		if(workq->tasks != NULL){
+			task_t* task = workq->tasks;
+			result = task->data;
+			workq->tasks = task->next;
+			free(task);
+		}
+		
+	}
+	int alldone = 0;
+	if(workq->tasks == NULL && workq->done == 0) alldone=1;
+	pthread_mutex_unlock(&(workq->lock));
+	if(alldone)workq_broadcast(workq);
     return result;
 }
 
@@ -183,7 +205,9 @@ void* workq_get(workq_t* workq)
  */
 void workq_finish(workq_t* workq)
 {
+	pthread_mutex_lock(&(workq->lock));
     workq->done = 1;
+	pthread_mutex_unlock(&(workq->lock));
 }
 
 
@@ -222,7 +246,8 @@ void* consumer_main(void* arg)
 {
     consumer_t* consumer = (consumer_t*) arg;
     workq_t* workq = consumer->workq;
-    for (char* t = (char*) workq_get(workq);
+	char* t;
+    for (t = (char*) workq_get(workq);
          t != NULL;
          t = (char*) workq_get(workq)) {
         lprintf("Process %d: %s\n", consumer->id, t);
