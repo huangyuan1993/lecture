@@ -189,10 +189,8 @@ void* workq_get(workq_t* workq)
 		}
 		
 	}
-	int alldone = 0;
-	if(workq->tasks == NULL && workq->done == 0) alldone=1;
+
 	pthread_mutex_unlock(&(workq->lock));
-	if(alldone)workq_broadcast(workq);
     return result;
 }
 
@@ -208,6 +206,7 @@ void workq_finish(workq_t* workq)
 	pthread_mutex_lock(&(workq->lock));
     workq->done = 1;
 	pthread_mutex_unlock(&(workq->lock));
+	workq_broadcast(workq);
 }
 
 
